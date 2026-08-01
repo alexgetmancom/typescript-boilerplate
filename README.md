@@ -1,135 +1,111 @@
-# TypeScript App & Bot Boilerplate
+# TypeScript Boilerplate
 
-A modern, highly performant, production-grade boilerplate for building Telegram bots, lightweight APIs, websites, and microservices in TypeScript.
+A Bun-first foundation for Telegram bots, small HTTP services, scheduled workers, and SQLite-backed automation projects.
 
-## Features
+The template contains infrastructure and one deliberately small example domain. Replace the example command and schema with project-specific code when starting a new application.
 
-- **Runtime**: Node.js 24+ (fully compatible with Bun).
-- **Web Server**: [Hono](https://hono.dev/) - lightweight edge-native web server with built-in structured request logging.
-- **Bot Engine**: [grammY](https://grammy.dev/) - modern and extremely fast.
-- **Database**: [Drizzle ORM](https://orm.drizzle.team/) with **SQLite** (`better-sqlite3`) utilizing **WAL mode**, busy timeouts, and foreign key constraints to prevent database locks.
-- **Validation**: [Zod](https://zod.dev/) for strict configuration validation on startup and API payloads.
-- **Tooling**: [Biome.js](https://biomejs.dev/) for sub-millisecond linting and formatting, [Vitest](https://vitest.dev/) for unit testing.
-- **Observability**: Structured JSON logging in production and human-readable logging in development.
+## Included
 
----
+- Bun and strict TypeScript configuration.
+- Hono HTTP server with liveness and readiness endpoints.
+- grammY Telegram bot with polling, webhook, and HTTP-only modes.
+- Drizzle ORM with Bun SQLite, WAL mode, busy timeout, foreign keys, and migrations.
+- Zod environment validation.
+- Structured application logging with sensitive-value redaction.
+- Graceful shutdown for the HTTP server, bot, and database.
+- A small interval-worker helper for future background jobs.
+- Biome formatting and linting.
+- Bun tests.
+- Docker and Docker Compose.
+- GitHub Actions validation.
 
-## Folder Structure
+## Project structure
 
-```txt
-├── .github/workflows/ci.yml # Automated CI pipeline (lint, compile, test, build)
-├── drizzle/           # SQL migration files (committed to repository)
-├── scripts/
-│   └── manage-webhook.ts # Helper script to set, delete, and inspect webhooks
-├── src/
-│   ├── config.ts      # Env variables validation schema (Zod)
-│   ├── logger.ts      # Structured JSON (prod) or console (dev) logger
-│   ├── db/
-│   │   ├── client.ts  # SQLite better-sqlite3 Drizzle setup (WAL mode)
-│   │   └── schema.ts  # Database tables (Users, Logs)
-│   ├── bot/
-│   │   ├── index.ts   # Bot middleware & command registration
-│   │   ├── context.ts # Custom context type injecting db and config
-│   │   └── commands/  # Modular bot command handlers
-│   ├── http.ts        # Hono app (health/readiness checks, webhook route)
-│   └── index.ts       # Orchestrator (graceful shutdown handlers)
-├── tsconfig.json      # Node Next module resolution config
-├── biome.json         # Biome formatter & linter rules
-├── Dockerfile         # Multi-stage production container build (runs as non-root)
-├── compose.yaml       # Simple Docker Compose configuration
-```
+    src/
+      bot/
+        commands/
+        context.ts
+        bot.ts
+      db/
+        client.ts
+        schema.ts
+      runtime/
+        worker.ts
+      scripts/
+        migrate.ts
+        manage-webhook.ts
+      config.ts
+      http.ts
+      logger.ts
+      index.ts
+    tests/
+    drizzle/
 
----
+The users table and the /start command are examples of a thin application layer. They are intentionally easy to remove or replace.
 
-## Configuration & BOT_MODE
+## Local development
 
-The app operates in one of three startup modes defined in your `.env` file:
+1. Copy .env.example to .env.
+2. Set TELEGRAM_BOT_TOKEN if using polling or webhook mode.
+3. Install dependencies:
 
-1. **`polling`**: Runs the Telegram bot in long polling mode. Starts the Hono web server *only* to serve health/readiness endpoints on `PORT`. (Best for local development).
-2. **`webhook`**: Mounts the bot callback endpoint on Hono. Does not start polling. (Best for production).
-3. **`http-only`**: Exposes the Hono API and database checks, but disables the bot. **`TELEGRAM_BOT_TOKEN` is optional in this mode.** (Best for pure API/web services).
+    bun install
 
-### Webhook Security
-In `webhook` mode, the callback path is `/telegram/webhook`. Requests are validated using `TELEGRAM_WEBHOOK_SECRET` matching the `X-Telegram-Bot-Api-Secret-Token` header sent by Telegram, blocking malicious requests.
+4. Apply migrations:
 
----
+    bun run db:migrate
 
-## Quick Start
+5. Start the development server:
 
-### 1. Setup local environment
-```bash
-cp .env.example .env
-```
-Open `.env` and set `TELEGRAM_BOT_TOKEN`.
+    bun run dev
 
-### 2. Install dependencies
-```bash
-pnpm install
-```
+The HTTP server listens on http://127.0.0.1:8080 by default.
 
-### 3. Run migrations locally
-```bash
-pnpm run db:migrate
-```
-*Note: In production deployments, migrations run automatically on application startup, so no manual step is required.*
+## Runtime modes
 
-> [!WARNING]
-> **Startup Migrations & Scale-Out Constraints**
-> Performing migrations on startup is safe and recommended for **single-instance deployments** (such as a single VPS process or a single Docker container).
-> If you scale out horizontally (multiple container replicas running concurrently), you risk race conditions and SQLite `SQLITE_BUSY` errors.
-> For horizontal scaling:
-> 1. Disable startup migrations in `src/index.ts` (comment out the `migrate` block).
-> 2. Run migrations as an isolated deployment step (e.g., in your CI pipeline or using a single-run init-container before spinning up your main application replicas).
+BOT_MODE accepts three values:
 
-### 4. Run Development Server (polling mode)
-```bash
-pnpm run dev
-```
+- polling: starts the Telegram bot with long polling and serves HTTP health endpoints.
+- webhook: serves the Telegram callback at /telegram/webhook and serves HTTP health endpoints.
+- http-only: disables Telegram and runs only the HTTP service.
 
----
+For webhook mode, set both PUBLIC_WEBHOOK_URL and a TELEGRAM_WEBHOOK_SECRET with at least 32 characters. The webhook URL should point to /telegram/webhook.
 
-## Webhook Management
+If TELEGRAM_ALLOWED_USER_IDS is non-empty, it must contain a comma-separated list of Telegram user IDs. Updates from other users are ignored.
 
-To register or remove your webhook in Telegram, use the helper scripts:
+## Commands
 
-```bash
-# Register your webhook URL with Telegram (requires PUBLIC_WEBHOOK_URL and TELEGRAM_WEBHOOK_SECRET)
-# By default, this drops all pending Telegram updates to avoid queue backup.
-pnpm run webhook:set
+    bun run dev             Development server with file watching
+    bun run build           Production TypeScript build
+    bun run start           Run the production build
+    bun run typecheck       TypeScript only
+    bun run lint            Biome check
+    bun run test            Bun test runner
+    bun run check           Lint, typecheck, tests, and build
+    bun run db:generate     Generate Drizzle migrations
+    bun run db:migrate      Apply migrations to DATABASE_URL
 
-# Register webhook but KEEP pending updates:
-pnpm run webhook:set --keep-pending
+## Webhook management
 
-# Remove the webhook from Telegram:
-pnpm run webhook:delete
+The optional helper can register, remove, and inspect the Telegram webhook:
 
-# View current webhook configuration:
-pnpm run webhook:info
-```
+    bun run webhook -- set
+    bun run webhook -- set --keep-pending
+    bun run webhook -- info
+    bun run webhook -- delete
 
----
+## Docker
 
-## Docker Deployment
+Create .env with DATABASE_URL=/app/data/app.db, then run:
 
-The application compiles to a production-safe, lightweight Docker image running as a non-root `node` user.
+    docker compose up -d --build
 
-### Production Network Binding
-For Docker environments, the Hono server must bind to all network interfaces. Ensure your production environment or `.env` file contains:
-```ini
-BIND_HOST=0.0.0.0
-PORT=8080
-```
-This is configured by default inside `compose.yaml` (which forwards port `8080`).
+The container runs as the non-root bun user and persists SQLite data in the local data directory.
 
-To build and run the stack:
-```bash
-docker compose up -d --build
-```
+## Starting a new project from this template
 
----
-
-## Health Checks & Observability
-
-The HTTP server exposes two health checking endpoints:
-- **`GET /healthz`**: Simple liveness check returning `200 ok` (verifies the Node.js/Hono process is running).
-- **`GET /readyz`**: Readiness check executing a lightweight query on SQLite (`SELECT 1`). Returns `500 error` if database connectivity is offline.
+1. Copy the repository or use it as a GitHub template.
+2. Rename the package and update APP_NAME.
+3. Replace the example schema and /start handler.
+4. Keep the runtime, integration, and operational conventions unless the project has a documented reason to diverge.
+5. Add domain services behind typed boundaries so external APIs can be tested with fixtures.

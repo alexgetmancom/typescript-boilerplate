@@ -1,24 +1,32 @@
-import fs from "node:fs";
-import path from "node:path";
-import Database from "better-sqlite3";
-import { type BetterSQLite3Database, drizzle } from "drizzle-orm/better-sqlite3";
+import { Database } from "bun:sqlite";
+import { mkdirSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { type BunSQLiteDatabase, drizzle } from "drizzle-orm/bun-sqlite";
+import { migrate } from "drizzle-orm/bun-sqlite/migrator";
 import * as schema from "./schema.js";
 
-export type DbClient = BetterSQLite3Database<typeof schema>;
+export type DatabaseClient = BunSQLiteDatabase<typeof schema>;
 
-export function openDb(dbPath: string): { sqlite: Database.Database; drizzle: DbClient } {
-  // Create directories if not exist
-  const dir = path.dirname(dbPath);
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
+export type OpenDatabase = {
+  sqlite: Database;
+  db: DatabaseClient;
+  close: () => void;
+};
+
+export function openDatabase(databasePath: string): OpenDatabase {
+  if (databasePath !== ":memory:") {
+    mkdirSync(dirname(resolve(databasePath)), { recursive: true });
   }
 
-  const sqlite = new Database(dbPath, { timeout: 5000 });
-  sqlite.pragma("journal_mode = WAL");
-  sqlite.pragma("busy_timeout = 5000");
-  sqlite.pragma("foreign_keys = ON");
+  const sqlite = new Database(databasePath, { create: true, strict: true });
+  sqlite.run("PRAGMA busy_timeout = 5000");
+  if (databasePath !== ":memory:") sqlite.run("PRAGMA journal_mode = WAL");
+  sqlite.run("PRAGMA foreign_keys = ON");
 
-  const db = drizzle(sqlite, { schema });
+  const db = drizzle(sqlite, { schema, casing: "snake_case" });
+  return { sqlite, db, close: () => sqlite.close() };
+}
 
-  return { sqlite, drizzle: db };
+export function migrateDatabase(db: DatabaseClient, migrationsFolder = resolve(process.cwd(), "drizzle")): void {
+  migrate(db, { migrationsFolder });
 }

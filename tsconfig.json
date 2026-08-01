@@ -3,15 +3,16 @@
     "target": "ES2022",
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
-    "lib": ["ES2022"],
     "strict": true,
-    "esModuleInterop": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
     "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true,
-    "outDir": "./dist",
-    "rootDir": "./",
-    "sourceMap": true,
-    "resolveJsonModule": true
+    "types": ["bun"],
+    "rootDir": ".",
+    "outDir": "dist"
   },
-  "include": ["src/**/*", "scripts/**/*", "tests/**/*", "drizzle.config.ts"]
+  "include": ["src/**/*.ts", "drizzle.config.ts"]
 }

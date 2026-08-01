@@ -1,54 +1,9 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "e57c5682-c735-4f09-8644-ba4ce3b78f56",
+  "id": "d04170df-7815-497a-a760-bc5ae9c3d1dc",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "tables": {
-    "logs": {
-      "name": "logs",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "integer",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": true
-        },
-        "level": {
-          "name": "level",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "message": {
-          "name": "message",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "details_json": {
-          "name": "details_json",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
     "users": {
       "name": "users",
       "columns": {
@@ -98,9 +53,7 @@
       "indexes": {
         "users_telegram_id_unique": {
           "name": "users_telegram_id_unique",
-          "columns": [
-            "telegram_id"
-          ],
+          "columns": ["telegram_id"],
           "isUnique": true
         }
       },

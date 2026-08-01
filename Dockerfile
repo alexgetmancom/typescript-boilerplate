@@ -1,38 +1,34 @@
-FROM node:24-alpine AS builder
+FROM oven/bun:1.3.14 AS build
 
-# Enable Corepack and prepare pnpm
-RUN corepack enable && corepack prepare pnpm@10.13.1 --activate
+WORKDIR /app
 
-WORKDIR /usr/src/app
+COPY package.json bun.lock ./
+RUN bun install --frozen-lockfile
 
-COPY package.json pnpm-lock.yaml* ./
-RUN pnpm install --frozen-lockfile
+COPY tsconfig.json biome.json drizzle.config.ts ./
+COPY src ./src
+COPY drizzle ./drizzle
 
-COPY tsconfig.json biome.json ./
-COPY src/ ./src/
+RUN bun run build
 
-RUN pnpm run build
+FROM oven/bun:1.3.14
 
-FROM node:24-alpine AS runner
+WORKDIR /app
 
-RUN corepack enable && corepack prepare pnpm@10.13.1 --activate
+COPY package.json bun.lock ./
+RUN bun install --frozen-lockfile --production
 
-WORKDIR /usr/src/app
+COPY --from=build /app/dist ./dist
+COPY drizzle ./drizzle
 
-COPY package.json pnpm-lock.yaml* .npmrc* ./
-RUN pnpm install --prod --frozen-lockfile
-
-COPY --from=builder /usr/src/app/dist ./dist
-COPY drizzle/ ./drizzle/
-
-# Create database volume directory and set ownership to node user
-RUN mkdir -p data && chown -R node:node /usr/src/app
-
-USER node
+RUN mkdir -p /app/data && chown -R bun:bun /app
+USER bun
 
 ENV NODE_ENV=production
-ENV BOT_MODE=webhook
+ENV BOT_MODE=http-only
 ENV BIND_HOST=0.0.0.0
 ENV PORT=8080
 
-CMD ["node", "dist/src/index.js"]
+EXPOSE 8080
+
+CMD ["bun", "dist/src/index.js"]

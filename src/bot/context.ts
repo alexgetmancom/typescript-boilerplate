@@ -1,8 +1,8 @@
 import type { Context } from "grammy";
-import type { Config } from "../config.js";
-import type { DbClient } from "../db/client.js";
+import type { AppConfig } from "../config.js";
+import type { DatabaseClient } from "../db/client.js";
 
-export type BotContext = Context & {
-  db: DbClient;
-  config: Config;
+export type AppContext = Context & {
+  config: AppConfig;
+  db: DatabaseClient;
 };

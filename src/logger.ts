@@ -1,21 +1,41 @@
 type LogLevel = "debug" | "info" | "warn" | "error";
 
-export function log(level: LogLevel, message: string, details?: Record<string, unknown> | unknown): void {
+const sensitiveKey = /token|secret|password|api[_-]?key|authorization|cookie/i;
+
+export function redact(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(redact);
+  if (value instanceof Error) return { name: value.name, message: value.message, stack: value.stack };
+  if (value !== null && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, nestedValue]) => [
+        key,
+        sensitiveKey.test(key) ? "[REDACTED]" : redact(nestedValue),
+      ]),
+    );
+  }
+  return value;
+}
+
+export function log(level: LogLevel, message: string, details?: unknown): void {
+  const safeDetails = details === undefined ? undefined : redact(details);
   const timestamp = new Date().toISOString();
 
   if (process.env.NODE_ENV === "production") {
-    // Structured JSON logging for production monitoring (ELK, Loki, Datadog)
-    console.log(
-      JSON.stringify({
-        timestamp,
-        level: level.toUpperCase(),
-        message,
-        ...(details && typeof details === "object" ? { details } : details !== undefined ? { details } : {}),
-      }),
-    );
+    const payload: Record<string, unknown> = {
+      timestamp,
+      level,
+      message,
+    };
+    if (safeDetails !== undefined) payload.details = safeDetails;
+    console.log(JSON.stringify(payload));
+    return;
+  }
+
+  const suffix = safeDetails === undefined ? "" : ` ${JSON.stringify(safeDetails)}`;
+  const output = `[${timestamp}] [${level.toUpperCase()}] ${message}${suffix}`;
+  if (level === "error") {
+    console.error(output);
   } else {
-    // Human-readable logging for local development
-    const detailsStr = details ? ` | Details: ${JSON.stringify(details)}` : "";
-    console.log(`[${timestamp}] [${level.toUpperCase()}] ${message}${detailsStr}`);
+    console.log(output);
   }
 }

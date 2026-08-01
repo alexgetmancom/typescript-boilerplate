@@ -9,10 +9,5 @@ export const users = sqliteTable("users", {
   updatedAt: text("updated_at").notNull(),
 });
 
-export const logs = sqliteTable("logs", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
-  level: text("level").notNull(),
-  message: text("message").notNull(),
-  detailsJson: text("details_json"),
-  createdAt: text("created_at").notNull(),
-});
+export type User = typeof users.$inferSelect;
+export type NewUser = typeof users.$inferInsert;

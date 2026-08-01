@@ -1,41 +1,53 @@
 import { sql } from "drizzle-orm";
-import { webhookCallback } from "grammy";
 import type { Bot } from "grammy";
+import { webhookCallback } from "grammy";
 import { Hono } from "hono";
 import { logger } from "hono/logger";
-import type { BotContext } from "./bot/context.js";
-import type { Config } from "./config.js";
-import type { DbClient } from "./db/client.js";
+import type { AppContext } from "./bot/context.js";
+import type { AppConfig } from "./config.js";
+import type { DatabaseClient } from "./db/client.js";
+import { log } from "./logger.js";
 
-export function createHttpApp(config: Config, bot: Bot<BotContext> | null, db: DbClient): Hono {
+export function createHttpApp(config: AppConfig, bot: Bot<AppContext> | null, db: DatabaseClient): Hono {
   const app = new Hono();
 
-  // Use Hono's official structured logger
-  app.use(logger());
+  app.use("*", logger());
 
-  // Health check: verification that HTTP server is up
-  app.get("/healthz", (c) => c.text("ok\n"));
+  app.get("/", (context) =>
+    context.json({
+      name: config.APP_NAME,
+      status: "ok",
+    }),
+  );
 
-  // Readiness check: verification that database is online and reachable
-  app.get("/readyz", async (c) => {
+  app.get("/healthz", (context) => context.text("ok\n"));
+
+  app.get("/readyz", (context) => {
     try {
-      db.run(sql`SELECT 1`);
-      return c.text("ready\n");
+      db.run(sql.raw("SELECT 1"));
+      return context.text("ready\n");
     } catch (error) {
-      console.error("❌ Readiness check failed: SQLite connection offline", error);
-      return c.text("error\n", 500);
+      log("error", "Readiness check failed", { error });
+      return context.text("error\n", 500);
     }
   });
 
-  // Webhook endpoint (only if BOT_MODE is webhook and bot is instantiated)
   if (config.BOT_MODE === "webhook" && bot) {
+    const secretToken = config.TELEGRAM_WEBHOOK_SECRET;
+    if (!secretToken) throw new Error("TELEGRAM_WEBHOOK_SECRET is required in webhook mode");
+
     app.post(
       "/telegram/webhook",
       webhookCallback(bot, "hono", {
-        secretToken: config.TELEGRAM_WEBHOOK_SECRET,
+        secretToken,
       }),
     );
   }
+
+  app.onError((error, context) => {
+    log("error", "Unhandled HTTP error", { error, path: context.req.path });
+    return context.json({ error: "Internal Server Error" }, 500);
+  });
 
   return app;
 }

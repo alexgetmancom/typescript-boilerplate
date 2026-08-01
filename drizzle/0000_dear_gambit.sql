@@ -1,11 +1,3 @@
-CREATE TABLE `logs` (
-	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
-	`level` text NOT NULL,
-	`message` text NOT NULL,
-	`details_json` text,
-	`created_at` text NOT NULL
-);
---> statement-breakpoint
 CREATE TABLE `users` (
 	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
 	`telegram_id` integer NOT NULL,
