@@ -7,6 +7,9 @@ import { migrateDatabase, openDatabase } from "../src/db/client.js";
 import { users } from "../src/db/schema.js";
 import { createHttpApp } from "../src/http.js";
 import { redact } from "../src/logger.js";
+import { createRuntimeStatus } from "../src/runtime/status.js";
+import { RuntimeSupervisor } from "../src/runtime/supervisor.js";
+import { startIntervalWorker } from "../src/runtime/worker.js";
 
 describe("configuration", () => {
   it("loads HTTP-only configuration without a Telegram token", () => {
@@ -25,6 +28,16 @@ describe("configuration", () => {
       "TELEGRAM_ALLOWED_USER_IDS",
     );
   });
+
+  it("requires webhook credentials in webhook mode", () => {
+    expect(() =>
+      loadConfig({
+        BOT_MODE: "webhook",
+        TELEGRAM_BOT_TOKEN: "123456:token",
+        PUBLIC_WEBHOOK_URL: "https://example.com",
+      }),
+    ).toThrow("TELEGRAM_WEBHOOK_SECRET");
+  });
 });
 
 describe("database and HTTP foundation", () => {
@@ -32,13 +45,31 @@ describe("database and HTTP foundation", () => {
     const database = openDatabase(":memory:");
     migrateDatabase(database.db);
     const config = loadConfig({ BOT_MODE: "http-only", DATABASE_URL: ":memory:" });
-    const app = createHttpApp(config, null, database.db);
+    const app = createHttpApp(config, null, database.db, createRuntimeStatus(config.BOT_MODE));
 
     expect(database.db.select().from(users).all()).toEqual([]);
     expect((await app.request("/healthz")).status).toBe(200);
     expect(await (await app.request("/healthz")).text()).toBe("ok\n");
     expect((await app.request("/readyz")).status).toBe(200);
     expect(await (await app.request("/readyz")).text()).toBe("ready\n");
+
+    database.close();
+  });
+
+  it("reports polling as not ready until the bot starts", async () => {
+    const database = openDatabase(":memory:");
+    migrateDatabase(database.db);
+    const config = loadConfig({
+      BOT_MODE: "polling",
+      TELEGRAM_BOT_TOKEN: "123456:token",
+      DATABASE_URL: ":memory:",
+    });
+    const runtimeStatus = createRuntimeStatus(config.BOT_MODE);
+    const app = createHttpApp(config, null, database.db, runtimeStatus);
+
+    expect((await app.request("/readyz")).status).toBe(503);
+    runtimeStatus.botReady = true;
+    expect((await app.request("/readyz")).status).toBe(200);
 
     database.close();
   });
@@ -56,9 +87,11 @@ describe("Telegram example command", () => {
     } as unknown as AppContext;
 
     await handleStart(context);
+    await handleStart(context);
 
     const user = database.db.select().from(users).get();
     expect(user?.telegramId).toBe(42);
+    expect(database.db.select().from(users).all()).toHaveLength(1);
     expect(reply).toHaveBeenCalledWith("Hello, Test!");
     database.close();
   });
@@ -69,6 +102,47 @@ describe("Telegram example command", () => {
     const bot = createBot(config, database.db);
     expect(bot).toBeDefined();
     database.close();
+  });
+});
+
+describe("worker lifecycle", () => {
+  it("waits for an active cycle before resolving stop", async () => {
+    let releaseTask: (() => void) | undefined;
+    let taskStarted: (() => void) | undefined;
+    const started = new Promise<void>((resolve) => {
+      taskStarted = resolve;
+    });
+    const taskReleased = new Promise<void>((resolve) => {
+      releaseTask = resolve;
+    });
+
+    const worker = startIntervalWorker("test", 60_000, async () => {
+      taskStarted?.();
+      await taskReleased;
+    });
+
+    await started;
+    let stopped = false;
+    const stopping = worker.stop().then(() => {
+      stopped = true;
+    });
+
+    await Promise.resolve();
+    expect(stopped).toBe(false);
+    releaseTask?.();
+    await stopping;
+    expect(stopped).toBe(true);
+  });
+
+  it("stops registered resources in reverse order", async () => {
+    const calls: string[] = [];
+    const supervisor = new RuntimeSupervisor();
+    supervisor.register({ stop: () => calls.push("first") });
+    supervisor.register({ stop: async () => calls.push("second") });
+
+    await supervisor.stop();
+
+    expect(calls).toEqual(["second", "first"]);
   });
 });
 

@@ -1,7 +1,7 @@
 import { log } from "../logger.js";
 
 export type WorkerHandle = {
-  stop: () => void;
+  stop: () => Promise<void>;
 };
 
 export function startIntervalWorker(name: string, intervalMs: number, task: () => void | Promise<void>): WorkerHandle {
@@ -11,6 +11,8 @@ export function startIntervalWorker(name: string, intervalMs: number, task: () =
 
   let stopped = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
+  let currentRun: Promise<void> = Promise.resolve();
+  let stopPromise: Promise<void> | undefined;
 
   const run = async (): Promise<void> => {
     if (stopped) return;
@@ -20,17 +22,27 @@ export function startIntervalWorker(name: string, intervalMs: number, task: () =
     } catch (error) {
       log("error", "Worker cycle failed", { worker: name, error });
     } finally {
-      if (!stopped) timer = setTimeout(() => void run(), intervalMs);
+      if (!stopped) timer = setTimeout(startCycle, intervalMs);
     }
   };
 
-  void run();
+  const startCycle = (): void => {
+    currentRun = run();
+    void currentRun;
+  };
+
+  startCycle();
 
   return {
     stop: () => {
+      if (stopPromise) return stopPromise;
+
       stopped = true;
       if (timer) clearTimeout(timer);
-      log("info", "Worker stopped", { worker: name });
+      stopPromise = currentRun.then(() => {
+        log("info", "Worker stopped", { worker: name });
+      });
+      return stopPromise;
     },
   };
 }

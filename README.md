@@ -18,6 +18,7 @@ The template contains infrastructure and one deliberately small example domain. 
 - Bun tests.
 - Docker and Docker Compose.
 - GitHub Actions validation.
+- MIT license.
 
 ## Project structure
 
@@ -30,6 +31,7 @@ The template contains infrastructure and one deliberately small example domain. 
         client.ts
         schema.ts
       runtime/
+        supervisor.ts
         worker.ts
       scripts/
         migrate.ts
@@ -42,6 +44,8 @@ The template contains infrastructure and one deliberately small example domain. 
     drizzle/
 
 The users table and the /start command are examples of a thin application layer. They are intentionally easy to remove or replace.
+
+Background workers should be registered with RuntimeSupervisor so shutdown waits for their active cycle before the database is closed.
 
 ## Local development
 
@@ -101,6 +105,17 @@ Create .env with DATABASE_URL=/app/data/app.db, then run:
     docker compose up -d --build
 
 The container runs as the non-root bun user and persists SQLite data in the local data directory.
+
+Compose sets NODE_ENV to production and defaults BOT_MODE to http-only unless it is explicitly set in .env.
+The checked-in .env.example is aimed at local polling development, so change BOT_MODE to http-only before running Compose without Telegram credentials.
+
+## Deployment constraints
+
+The default database setup is intended for one running application instance. SQLite WAL mode improves local concurrency, but it does not turn a bind-mounted SQLite file into a horizontally scalable shared database.
+
+Startup migrations are appropriate for a single container or VPS process. If a project needs multiple application replicas, move migrations into a separate deployment step and use a database designed for that topology, such as PostgreSQL or a managed libSQL-compatible service.
+
+The liveness endpoint at /healthz only checks that the HTTP process is alive. In polling mode, /readyz also stays unavailable until the Telegram bot has started successfully.
 
 ## Starting a new project from this template
 

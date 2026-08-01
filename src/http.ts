@@ -7,11 +7,17 @@ import type { AppContext } from "./bot/context.js";
 import type { AppConfig } from "./config.js";
 import type { DatabaseClient } from "./db/client.js";
 import { log } from "./logger.js";
+import type { RuntimeStatus } from "./runtime/status.js";
 
-export function createHttpApp(config: AppConfig, bot: Bot<AppContext> | null, db: DatabaseClient): Hono {
+export function createHttpApp(
+  config: AppConfig,
+  bot: Bot<AppContext> | null,
+  db: DatabaseClient,
+  runtimeStatus: RuntimeStatus,
+): Hono {
   const app = new Hono();
 
-  app.use("*", logger());
+  if (config.NODE_ENV !== "production") app.use("*", logger());
 
   app.get("/", (context) =>
     context.json({
@@ -25,11 +31,19 @@ export function createHttpApp(config: AppConfig, bot: Bot<AppContext> | null, db
   app.get("/readyz", (context) => {
     try {
       db.run(sql.raw("SELECT 1"));
-      return context.text("ready\n");
     } catch (error) {
       log("error", "Readiness check failed", { error });
       return context.text("error\n", 500);
     }
+
+    if (config.BOT_MODE === "polling" && !runtimeStatus.botReady) {
+      log("warn", "Readiness check failed: Telegram polling is not ready", {
+        error: runtimeStatus.botError,
+      });
+      return context.text("not ready\n", 503);
+    }
+
+    return context.text("ready\n");
   });
 
   if (config.BOT_MODE === "webhook" && bot) {

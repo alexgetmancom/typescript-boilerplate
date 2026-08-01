@@ -52,5 +52,25 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
+          load: true
           push: false
           tags: typescript-boilerplate:test
+
+      - name: Smoke-test container
+        run: |
+          set -euo pipefail
+          container_name=typescript-boilerplate-smoke
+          trap 'docker rm -f "$container_name" >/dev/null 2>&1 || true' EXIT
+
+          docker run --detach --name "$container_name" --publish 18080:8080 typescript-boilerplate:test
+
+          for attempt in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:18080/healthz >/dev/null; then
+              curl --fail --silent http://127.0.0.1:18080/readyz >/dev/null
+              exit 0
+            fi
+            sleep 1
+          done
+
+          docker logs "$container_name"
+          exit 1
